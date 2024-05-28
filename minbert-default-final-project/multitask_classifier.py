@@ -64,7 +64,7 @@ class MultitaskBERT(nn.Module):
     '''
     def __init__(self, config):
         super(MultitaskBERT, self).__init__()
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
+        self.bert = BertModel.from_pretrained('bert-cased')
         # Pretrain mode does not require updating BERT paramters.
         for param in self.bert.parameters():
             if config.option == 'pretrain':
@@ -75,7 +75,8 @@ class MultitaskBERT(nn.Module):
         ### TODO
         self.dropout=torch.nn.Dropout(p=0.1)
         self.config=config
-        self.outproject_pre=torch.nn.Linear(config.hidden_size,5)
+        self.outproject_pre1=torch.nn.Linear(config.hidden_size,100)
+        self.outproject_pre2=torch.nn.Linear(100,5)
         self.outproject_para1=torch.nn.Linear(2*config.hidden_size,100)
         self.outproject_para2=torch.nn.Linear(100,2)
         self.outproject_simi1=torch.nn.Linear(config.hidden_size,config.hidden_size)
@@ -104,7 +105,9 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         pooler_output=self.forward(input_ids,attention_mask)
-        pooler_output=self.outproject_pre(self.dropout(pooler_output))
+        pooler_output=F.gelu(self.outproject_pre1(pooler_output))
+        pooler_output=F.gelu(self.outproject_pre2(pooler_output))
+        
 
         return pooler_output
 
@@ -124,7 +127,6 @@ class MultitaskBERT(nn.Module):
         pooler_output=torch.cat((pooler_output_1,pooler_output_2),dim=1)
         pooler_output=F.sigmoid(self.outproject_para1(pooler_output))
         pooler_output=F.sigmoid(self.outproject_para2(pooler_output))
-        print(pooler_output)
 
 
         return pooler_output
@@ -145,7 +147,6 @@ class MultitaskBERT(nn.Module):
         pooler_output_2=torch.unsqueeze(pooler_output_2,dim=2)
         pooler_output=torch.bmm(pooler_output_1,pooler_output_2)/sqrt(self.config.hidden_size)
         pooler_output=5*F.sigmoid(torch.squeeze(pooler_output,dim=2))
-        print(pooler_output)
 
         return pooler_output
 
@@ -205,12 +206,29 @@ def train_multitask(args):
                                         collate_fn=sts_dev_data.collate_fn)
 
     # Init model.
-    config = {'hidden_dropout_prob': args.hidden_dropout_prob,
-              'num_labels': num_labels,
-              'hidden_size': 768,
-              'data_dir': '.',
-              'option': args.option}
-
+    config={"architectures": ["BertForMaskedLM"],
+            "attention_probs_dropout_prob": 0.1,
+            "gradient_checkpointing": False,
+            "hidden_act": "gelu",
+            "hidden_dropout_prob": 0.1,
+            "hidden_size": 768,
+            "initializer_range": 0.02,
+            "intermediate_size": 3072,
+            "layer_norm_eps": 1e-12,
+            "max_position_embeddings": 512,
+            "model_type": "bert",
+            "num_attention_heads": 12,
+            "num_hidden_layers": 12,
+            "pad_token_id": 0,
+            "position_embedding_type": "absolute",
+            "transformers_version": "4.6.0.dev0",
+            "type_vocab_size": 2,
+            "use_cache": True,
+            "vocab_size": 30522,
+            'data_dir': '.',
+            'option': args.option,
+            'num_labels': num_labels,
+            'name_or_path':'pretrain'}
     config = SimpleNamespace(**config)
 
     model = MultitaskBERT(config)
@@ -244,9 +262,7 @@ def train_multitask(args):
             train_loss += loss.item()
             num_batches += 1 
 
-            if num_batches>10:
-                break
-        
+        '''
         for step, batch in enumerate(tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE)):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -266,7 +282,6 @@ def train_multitask(args):
             #注意：模型不更新的重要原因，不要对logit这一模型输出项进行任何形状上的修改
             #注意：MSEloss损失函数报错：dtype received Long but required Float报错，因为b_labels是int
             loss = F.cross_entropy(logits, b_labels.view(-1),reduction='sum') /args.batch_size
-            F.cosine_embedding_loss
 
             loss.backward()
             optimizer.step()
@@ -274,9 +289,7 @@ def train_multitask(args):
 
             train_loss += loss.item()
             num_batches += 1
-            if num_batches>20:
-                break
-        
+        '''
         for step, batch in enumerate(tqdm(sts_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE)):
             (b_ids1, b_mask1,
              b_ids2, b_mask2,
@@ -307,14 +320,11 @@ def train_multitask(args):
 
             train_loss += loss.item()
             num_batches += 1
+          
 
-
-            if num_batches>30:
-                break
 
         train_loss = train_loss / (num_batches)
 
-        '''
         (sentiment_accuracy,sst_y_pred, sst_sent_ids,
                 paraphrase_accuracy, para_y_pred, para_sent_ids,
                 sts_corr,sts_y_pred, sts_sent_ids)=model_eval_multitask(sst_dev_dataloader,para_dev_dataloader,sts_dev_dataloader,model,device)
@@ -323,7 +333,7 @@ def train_multitask(args):
         if dev_acc > best_dev_acc:
             best_dev_acc = dev_acc
             save_model(model, optimizer, args, config, args.filepath)
-        '''
+
         
 
 

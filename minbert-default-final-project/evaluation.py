@@ -78,7 +78,7 @@ def model_eval_multitask(sentiment_dataloader,
         para_y_true = []
         para_y_pred = []
         para_sent_ids = []
-        '''
+
         for step, batch in enumerate(tqdm(paraphrase_dataloader, desc=f'eval', disable=TQDM_DISABLE)):
             (b_ids1, b_mask1,
              b_ids2,b_mask2,
@@ -91,8 +91,11 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            logits = model.predict_paraphrase(b_ids1, b_mask1,b_ids2,b_mask2)
-            y_hat = torch.argmax(logits,dim=1).cpu().numpy()##如何求最大值对应的indices，dim=1求每一行的最大值
+            logit_1,logit_2 = model.predict_paraphrase(b_ids1, b_mask1,b_ids2,b_mask2)
+            y_hat=torch.nn.functional.cosine_similarity(logit_1,logit_2,dim=1)
+            if step%100==0:
+                print(y_hat)
+            y_hat=torch.where(y_hat<0,0,1).int().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
 
             para_y_pred.extend(y_hat)
@@ -102,8 +105,7 @@ def model_eval_multitask(sentiment_dataloader,
                 break
 
         paraphrase_accuracy = np.mean(np.array(para_y_pred) == np.array(para_y_true))
-        '''
-        paraphrase_accuracy=0
+
         # Evaluate semantic textual similarity.
         sts_y_true = []
         sts_y_pred = []
@@ -120,8 +122,11 @@ def model_eval_multitask(sentiment_dataloader,
             b_ids2 = b_ids2.to(device)
             b_mask2 = b_mask2.to(device)
 
-            logits = model.predict_similarity(b_ids1, b_mask1,b_ids2,b_mask2)
-            y_hat = logits.flatten().cpu().numpy()
+            logit_1,logit_2 = model.predict_similarity(b_ids1, b_mask1,b_ids2,b_mask2)
+            y_hat=torch.nn.functional.cosine_similarity(logit_1,logit_2,dim=1)
+            y_hat=2.5*(y_hat+1).flatten().cpu().numpy()
+            if step%50==0:
+                print(y_hat)
             b_labels = b_labels.flatten().cpu().numpy()
 
             sts_y_pred.extend(y_hat)
