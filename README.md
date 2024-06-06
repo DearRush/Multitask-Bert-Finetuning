@@ -77,6 +77,120 @@ Semantic Textual Similarity correlation: 0.454
 
 finetune之后task2、task3明显效果显著优于pretrain；然而task1效果却较低；考虑到任务2数据集大小最大，且任务2和任务3相似，说明不同类型任务之间会有干扰，同时修改Bert模型的确比修改线性层效果更好。
 
+## 第二版
+
+损失函数的修正：对于任务2、任务3损失函数转变为cosine_similarity_loss。
+
+任务2的具体步骤：首先求得两个句子的对应Bert Embedding；两个Embedding通过对应的两层线性层，得到两个输出a、b；训练时a、b输入cosine_similarity_loss；预测时使用cosine_similarity，小于0为负，大于0为正
+
+任务3的具体步骤：首先求得两个句子的对应Bert Embedding；两个Embedding通过对应的一层线性层得到两个输出a、b；训练时a、b输入cosine_similarity_loss；预测时使用cosine_similarity；然后线性投射到0~5上
+
+当前问题：任务二精度不高（也许线性层不够）、任务三预测似乎始终为正数（的确是问题，因为不论如何cosine_similarity应该有正有负；结果发现是有负数的，只是占比过少）
+
+注意事实：原文未说明任务2适用该损失函数；而是任务3
+
+## 第三版：实现数据集进一步预训练
+
+如果用所有的数据集迭代之后：
+
+```
+Sentiment dataset accuracy: 0.232
+Paraphrase dataset accuracy: 0.234
+Semantic Similarity dataset accuracy: 0.260
+```
+
+没有quora的迭代表现：（因为有quora会导致网络崩溃）
+
+```
+Sentiment dataset accuracy: 0.301
+Paraphrase dataset accuracy: 0.178
+Semantic Similarity dataset accuracy: 0.290
+```
+
+
+
+使用pretrain（没使用quora）之后的bert-model进行downstream finetuning(only task 1):
+
+```
+Sentiment classification accuracy: 0.424
+
+Sentiment classification accuracy: 0.460
+
+Sentiment classification accuracy: 0.465
+
+Sentiment classification accuracy: 0.498
+```
+
+使用bert-base进行downstream finetuning(task 1 & task 3)(三次迭代)：
+
+```
+Sentiment classification accuracy: 0.516
+Semantic Textual Similarity correlation: 0.515
+```
+
+使用pretrain（没使用quora）之后的bert-model进行downstream finetuning(task 1 & task 3)（使用了iter6）:
+
+明显观察到各个任务之间的冲突。
+
+```
+Sentiment classification accuracy: 0.448
+Semantic Textual Similarity correlation: 0.484
+```
+
+使用pretrain（没使用quora）之后的bert-model进行downstream finetuning(task 1、2、3):
+
+明显观察到各个任务之间的冲突。（同时和之前相同场景相同迭代次数，不同基础bert权重的效果进行比较）
+
+```
+Sentiment classification accuracy: 0.421
+Paraphrase dataset accuracy: 0.778
+Semantic Textual Similarity correlation: 0.445
+```
+
+## 第四版：平衡训练顺序和训练规模
+
+将quora训练次数将为750:终于不再崩溃
+
+```
+Sentiment dataset accuracy: 0.327
+Paraphrase dataset accuracy: 0.339
+Semantic Similarity dataset accuracy: 0.302
+```
+
+将该模型进行task 1 2 3的finetune:
+
+```
+Sentiment classification accuracy: 0.424
+Paraphrase dataset accuracy: 0.776
+Semantic Textual Similarity correlation: 0.402
+```
+
+仍然使用之前（不使用quora）的bert-model进行downstream finetuning(task 1、2、3)，但将第二个训练集的大小变小：
+
+1000(弃置)：
+
+```
+Sentiment classification accuracy: 0.411
+Paraphrase dataset accuracy: 0.627
+Semantic Textual Similarity correlation: 0.306
+
+Sentiment classification accuracy: 0.443
+Paraphrase dataset accuracy: 0.676
+Semantic Textual Similarity correlation: 0.362
+
+Sentiment classification accuracy: 0.408
+Paraphrase dataset accuracy: 0.693
+Semantic Textual Similarity correlation: 0.374
+
+Sentiment classification accuracy: 0.429
+Paraphrase dataset accuracy: 0.698
+Semantic Textual Similarity correlation: 0.350
+```
+
+
+
+finetune之后task2、task3明显效果显著优于pretrain；然而task1效果却较低；考虑到任务2数据集大小最大，且任务2和任务3相似，说明不同类型任务之间会有干扰，同时修改Bert模型的确比修改线性层效果更好。
+
 ## NOTE
 
 实际上还需要Data文件夹与Bert的基础文件夹。
